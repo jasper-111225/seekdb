@@ -1,0 +1,11 @@
+.tmpdb
+.benchdb
+.suitdb
+.topkdb
+.dbg
+.dbg2
+.crashdb
+tests
+agent
+*.o
+minivectordb
