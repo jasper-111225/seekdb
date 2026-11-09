@@ -179,6 +179,24 @@
       "ref": "m00685",
       "role": "tool",
       "content": "git archive HEAD 导出到空目录后 make -j4 成功产出 minivectordb（256KB），tests/run_public.py 仍 20/20 —— 证明构建不依赖任何未跟踪文件。"
+    },
+    {
+      "id": "c24",
+      "ref": "m00724",
+      "role": "student",
+      "content": "第一次提测被平台判为『执行失败』，学生把状态反馈回来（未附构建日志）。"
+    },
+    {
+      "id": "c25",
+      "ref": "m00744",
+      "role": "agent",
+      "content": "定位：重建干净分支时只从旧分支 checkout 了 src/tests/docs/agent，漏了 Dockerfile，于是 HEAD 里留下的仍是官方 0 字节占位符 —— 镜像构建没有任何指令，必然『执行失败』。修复：从旧提交取回 24 行 Dockerfile（多阶段 ubuntu:24.04），补 DEBIAN_FRONTEND/LC_ALL 与 .git、.pkg 的 dockerignore，并新增 tests/check_submission.py 把『Dockerfile 不能是 0 字节』『Makefile 必须被跟踪』『不能混入数据目录/密钥』做成 push 前自检。"
+    },
+    {
+      "id": "c26",
+      "ref": "m00750",
+      "role": "tool",
+      "content": "python3 tests/check_submission.py → Dockerfile 643 字节 / Makefile 362 字节 / src 7 个 / conversation.json 21315 字节 / submission OK；git archive 干净树重新 make 与 20/20 仍通过。"
     }
   ],
   "experiments": [
@@ -252,6 +270,14 @@
       "command": "git archive HEAD | tar -x -C .clean && cd .clean && make -j4 && python3 tests/run_public.py",
       "output": "minivectordb 256152 bytes / 20/20 cases passed",
       "what": "确认 Makefile、src、mysqltest 都在提交里，镜像构建阶段 COPY Makefile 与 COPY src 不会落空。",
+      "status": "verified"
+    },
+    {
+      "id": "e10",
+      "name": "提交物自检",
+      "command": "python3 tests/check_submission.py",
+      "output": "ok Dockerfile 643 字节 / ok Makefile 362 字节 / submission OK",
+      "what": "挡住『文件在树里但内容为空』类致命问题：Dockerfile 占位符、Makefile 被 .gitignore 忽略、conversation.json 空、混入数据目录或 token。",
       "status": "verified"
     }
   ],
@@ -346,7 +372,7 @@
     },
     {
       "id": "l2",
-      "text": "本机没有 docker/podman、没有 root，无法真正 docker build；已用 `git archive HEAD` 导出干净树验证 make 与 20/20（证明镜像两步 COPY 的输入都在提交里），Dockerfile 写法与官方示例一致（ubuntu:24.04 多阶段、/data、不 EXPOSE）。"
+      "text": "本机没有 docker/podman、没有 root，无法真正 docker build；用 `git archive HEAD` 导出干净树验证 make 与 20/20，并用 tests/check_submission.py 校验 Dockerfile/Makefile/材料/密钥/数据目录。真镜像构建只能在平台预检验证。"
     },
     {
       "id": "l3",
