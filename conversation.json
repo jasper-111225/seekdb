@@ -197,6 +197,18 @@
       "ref": "m00750",
       "role": "tool",
       "content": "python3 tests/check_submission.py → Dockerfile 643 字节 / Makefile 362 字节 / src 7 个 / conversation.json 21315 字节 / submission OK；git archive 干净树重新 make 与 20/20 仍通过。"
+    },
+    {
+      "id": "c27",
+      "ref": "m00777",
+      "role": "student",
+      "content": "平台回执三项都是『未完成』：MySQL 正式用例（准入条件，不计排名分）、性能原始分、Agent Prompt 原始分。仍未给构建/运行日志。"
+    },
+    {
+      "id": "c28",
+      "ref": "m00782",
+      "role": "agent",
+      "content": "在没有日志的前提下按最可能的失败点做加固：① Dockerfile 改成单阶段（二进制与 libstdc++ 同一文件系统，排除运行镜像缺库导致容器秒退）；② 构建期执行 ./minivectordb --selftest（建表/写入/TopK/回滚/重开恢复），二进制在镜像里跑不起来就让 build 失败而不是等到评测；③ /data 建好后 chmod 777（防止以非 root 运行容器时打不开数据目录）；④ 新增 --selftest 后本地把 Dockerfile 的 RUN 序列在临时目录里逐步复演（make → selftest → install → 换目录启动查询）确认可用。"
     }
   ],
   "experiments": [
@@ -278,6 +290,14 @@
       "command": "python3 tests/check_submission.py",
       "output": "ok Dockerfile 643 字节 / ok Makefile 362 字节 / submission OK",
       "what": "挡住『文件在树里但内容为空』类致命问题：Dockerfile 占位符、Makefile 被 .gitignore 忽略、conversation.json 空、混入数据目录或 token。",
+      "status": "verified"
+    },
+    {
+      "id": "e11",
+      "name": "复演 Dockerfile 的构建步骤",
+      "command": "cp Makefile src/* .emu/srcwork/ && make -j4 && ./minivectordb --selftest && install -m 0755 minivectordb ../app/ && printf ... | ../app/minivectordb --data-dir ../data",
+      "output": "selftest: 0 failure(s) / READY / id d 1 1.4142135623730951 / exit=0",
+      "what": "本机无 docker，只能把 RUN 的每一步在临时目录里照做一遍：编译、构建期冒烟、安装到 /app、再换工作目录用另一个数据目录启动并查询，确认单阶段镜像里的相对路径都成立。",
       "status": "verified"
     }
   ],

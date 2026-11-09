@@ -23,15 +23,20 @@ def tracked(path):
 
 
 def check_dockerfile():
-    blob = tracked("Dockerfile")
-    if blob is None:
+    tracked_blob = tracked("Dockerfile")
+    if tracked_blob is None:
         problems.append("Dockerfile 未被 git 跟踪")
         return
-    text = blob.decode("utf-8", "replace")
-    if len(blob) == 0:
+    # 以工作区内容为准（即将提交的内容）；HEAD 为空说明改了还没提交
+    path = os.path.join(ROOT, "Dockerfile")
+    blob = open(path, "rb").read() if os.path.exists(path) else b""
+    if not blob:
         problems.append("Dockerfile 是 0 字节（官方占位符没被覆盖）")
         return
-    for needle in ("COPY src", "COPY Makefile", "ENTRYPOINT", "ubuntu:24.04"):
+    if not tracked_blob:
+        problems.append("HEAD 里的 Dockerfile 仍是 0 字节占位符——改动还没提交")
+    text = blob.decode("utf-8", "replace")
+    for needle in ("COPY src", "COPY Makefile", "ENTRYPOINT", "ubuntu:24.04", "--selftest"):
         if needle not in text:
             problems.append("Dockerfile 缺少 %r" % needle)
     if "apt-get install" not in text and "make" in text:

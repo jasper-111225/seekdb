@@ -2,6 +2,7 @@
 #include "simdb.h"
 
 #include <csignal>
+#include <cstdlib>
 #include <unistd.h>
 
 namespace {
@@ -21,12 +22,65 @@ bool parse_arg(int argc, char** argv, const char* name, std::string& out) {
   return false;
 }
 
+
+// --selftest：不依赖标准输入，跑一遍最小闭环（建表/写入/向量 TopK/事务回滚/重启恢复），
+// 供镜像构建阶段做冒烟（构建期就能发现"二进制跑不起来"这类问题）。
+int selftest() {
+  char tmpl[] = "/tmp/mvdbselfXXXXXX";
+  char* dir = mkdtemp(tmpl);
+  if (!dir) { fprintf(stderr, "selftest: mkdtemp failed\n"); return 1; }
+  int failures = 0;
+  auto run = [&](mv::Engine& e, const char* sql, bool want_ok) {
+    mv::Parser p; mv::Stmt st; std::string err;
+    std::string q(sql);
+    while (!q.empty() && (q.back() == ';' || q.back() == ' ' || q.back() == '\n')) q.pop_back();
+    if (!p.parse(q, st, err)) {
+      fprintf(stderr, "selftest: parse failed: %s\n", sql); failures++; return mv::ResultSet{};
+    }
+    mv::ResultSet rs; mv::DbError e2;
+    bool ok = mv::exec_stmt(e, st, rs, e2);
+    if (ok != want_ok) { fprintf(stderr, "selftest: unexpected %s for: %s\n", ok ? "ok" : "error", sql); failures++; }
+    return rs;
+  };
+  {
+    mv::Engine e; std::string msg;
+    if (!e.open(dir, msg)) { fprintf(stderr, "selftest: open failed: %s\n", msg.c_str()); return 1; }
+    run(e, "CREATE TABLE t (id BIGINT PRIMARY KEY, c VARCHAR(16), v VECTOR(2));", true);
+    run(e, "INSERT INTO t VALUES (1,'a','[0,0]'),(2,'b','[3,4]');", true);
+    mv::ResultSet rs = run(e, "SELECT L2_DISTANCE(v,'[0,0]') AS d FROM t WHERE id = 2;", true);
+    if (rs.cells.empty()) { fprintf(stderr, "selftest: no distance row\n"); failures++; }
+    else {
+      double d = std::strtod(rs.cells[0].c_str(), nullptr);
+      if (d < 4.9999 || d > 5.0001) { fprintf(stderr, "selftest: distance %s != 5\n", rs.cells[0].c_str()); failures++; }
+    }
+    run(e, "BEGIN;", true);
+    run(e, "DELETE FROM t;", true);
+    run(e, "ROLLBACK;", true);
+    rs = run(e, "SELECT COUNT(*) FROM t;", true);
+    if (rs.cells.empty() || rs.cells[0] != "2") { fprintf(stderr, "selftest: rollback mismatch\n"); failures++; }
+    run(e, "INSERT INTO t VALUES (2,'b','[3,4]');", false);  // 重复主键必须失败
+  }
+  {  // 重开验证持久化
+    mv::Engine e; std::string msg;
+    if (!e.open(dir, msg)) { fprintf(stderr, "selftest: reopen failed: %s\n", msg.c_str()); return 1; }
+    mv::ResultSet rs = run(e, "SELECT COUNT(*) FROM t;", true);
+    if (rs.cells.empty() || rs.cells[0] != "2") { fprintf(stderr, "selftest: recover mismatch\n"); failures++; }
+  }
+  std::string cleanup = std::string("rm -rf '") + dir + "'";
+  if (system(cleanup.c_str()) != 0) { /* 清理失败不影响结论 */ }
+  fprintf(stderr, "selftest: %d failure(s)\n", failures);
+  return failures == 0 ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   std::string data_dir = "/data";
   std::string proto = "mysql";
   std::string v;
+  for (int i = 1; i < argc; i++) {
+    if (std::string(argv[i]) == "--selftest") return selftest();
+  }
   if (parse_arg(argc, argv, "data-dir", v)) data_dir = v;
   if (parse_arg(argc, argv, "proto", v)) proto = v;
   if (parse_arg(argc, argv, "mode", v)) {
