@@ -1,0 +1,348 @@
+{
+  "meta": {
+    "schema_version": "agent-learning-evidence-v3",
+    "material_kind": "single_conversation_json",
+    "task": "2026 OceanBase 数据库大赛 · 加赛赛题一：实现 MiniVectorDB",
+    "repository": "https://github.com/jasper-111225/seekdb",
+    "branch": "2026-competition-round2",
+    "commit": "",
+    "engine": "deepseek-harness",
+    "agent_model": "deepseek-flash",
+    "session_start_local": "2026-11-09T14:37:12+08:00",
+    "synthetic": false,
+    "language": "zh-CN",
+    "material_scope": "本文件收录本轮加赛任务的真实协作记录：学生的原始 prompt、Agent 的分析与实现步骤、工具的实际执行结果、以及学生对结果的解释（由学生本人给出）。会话内消息以 mNNNNN 编号标注，便于与原始记录核对。官方公开题包（mysqltest/，20 例 95 条 SQL）发布后，本地复刻驱动跑出 20/20，相关记录见 experiments 与 unit-4。",
+    "desensitization": "已移除 GitHub 访问令牌等凭据；不包含任何密钥。仓库与分支名保留，便于组织方核对同一次提交。",
+    "attribution_rule": "role=student 的条目只放学生本人输入；role=agent 为 Agent 产出；role=tool 为命令的真实输出。Agent 的建议不视为学生理解。"
+  },
+  "user_prompts": [
+    {
+      "id": "u1",
+      "ref": "m00001",
+      "role": "student",
+      "time": "2026-11-09T14:37",
+      "content": "现在大赛官方出了加赛题目，帮我按要求完成第二道实现 MiniVectorDB：一套支持基础 SQL、向量检索、持久化存储、事务与崩溃恢复的轻量数据库。本题加赛满分 80 分，初赛已得分不受影响。提交材料：在报名登记的 seekdb 仓库 2026-competition-round2 分支提交源码、Dockerfile 和 Agent Prompt 学习材料。源码、Dockerfile 和 Agent Prompt 材料须来自同一次提交。整题只需提测一次；如填写 Commit SHA，请使用完整值。计分：MySQL 正式用例全部通过才进入计分。性能与 Agent Prompt 分别排名，各最高 40 分；第一名 40 分，每往后一名减 0.5 分，最低 0 分，并列同分。单项无效不占对应榜单名次，不影响另一有效项。平台按当前榜比较同队的新旧整条成绩，只有两项排名分之和提高才替换；不拼接不同提交，也不用手动选版本。比赛期间为暂定榜。记住先不开始做，先全网搜索相关资料，确定一个万全的答题思路和方法规划。",
+      "context": "任务起点。学生明确要求先调研再动手，并给出完整计分与提交规则。"
+    },
+    {
+      "id": "u2",
+      "ref": "m00255",
+      "role": "student",
+      "time": "2026-11-09T14:57",
+      "content": "开始",
+      "context": "在阅读答题方案 v2（含未知项对冲与九天日程）之后，口头批准进入实现阶段（D0）。"
+    },
+    {
+      "id": "u3",
+      "ref": "m00562",
+      "role": "student",
+      "time": "2026-11-10T00:51",
+      "content": "题包应该已经有了",
+      "context": "官方分支在初赛进行中新增了 mysqltest/ 公开题包；学生发现后提示重新核对，中止『题包未公开』的旧假设。"
+    }
+  ],
+  "conversations": [
+    {
+      "id": "c1",
+      "ref": "m00151",
+      "role": "student",
+      "content": "学生对竞赛规则的理解：MySQL 正式用例全部通过才进入计分，性能与 Agent Prompt 各自独立排名，两项共用同一次提测，因此'先拿到可提测的最小闭环'比'先憋大招'更重要。"
+    },
+    {
+      "id": "c2",
+      "ref": "m00160",
+      "role": "agent",
+      "content": "全网检索（官网、语雀、GitHub、Discourse）未找到该题的公开题包或测试驱动；官方分支 2026-competition-round2 上只有 37 个 blob，Dockerfile 与 conversation.json 均为 0 字节，题库/驱动/协议都要等组织方另发。结论：这是一道'从零写'的题。"
+    },
+    {
+      "id": "c3",
+      "ref": "m00180",
+      "role": "student",
+      "content": "学生把'驱动未知'当作首要风险，要求方案必须给出不依赖具体协议也能提测的对冲路径，而不是赌某一种输入格式。"
+    },
+    {
+      "id": "c4",
+      "ref": "m00205",
+      "role": "agent",
+      "content": "方案 v2 的未知项对冲：把语句切分、结果格式、错误码、就绪标识、exact/ann 开关、退出方式六件事全部收敛到 src/proto.cpp，预置 MYSQL/BLOCK/JSONL 三套输出，浮点格式单点可换（MVDB_FLOAT_FMT），终止符可配（MVDB_TERM）。"
+    },
+    {
+      "id": "c5",
+      "ref": "m00290",
+      "role": "agent",
+      "content": "实现选型：C++17 + POSIX，零第三方依赖。理由：评测按耗时/IO/内存三维计分，GC 语言与解释器在这三项上都吃亏；C++ 可以直接写 AVX2/AVX-512 内核对，并用运行时 cpuid 分发。"
+    },
+    {
+      "id": "c6",
+      "ref": "m00320",
+      "role": "tool",
+      "content": "首次编译报错：src/vec.cpp:109: 'const struct mv::Table' has no member named 'dim'；同一次跑出的还有 storage.cpp 里 row_from_slot 未被使用。说明 SIMD 内核与列式表结构的字段还没对齐。"
+    },
+    {
+      "id": "c7",
+      "ref": "m00345",
+      "role": "tool",
+      "content": "第一次冒烟执行到第一条 SELECT 就 SIGSEGV（exit=139），而 CREATE/INSERT 正常。崩溃点在投影到向量距离的快路径上。"
+    },
+    {
+      "id": "c8",
+      "ref": "m00360",
+      "role": "agent",
+      "content": "定位：qvec 只对 'L2_DISTANCE 投影' push，而 qcol/pcol 是对所有投影等长的，于是用投影下标 c 去索引 qvec 时越界。修法是把 qvec 也补成与 pcol 等长，下标语义统一。"
+    },
+    {
+      "id": "c9",
+      "ref": "m00370",
+      "role": "tool",
+      "content": "重启后 VARCHAR 列全空：SELECT * FROM docs 只回收到 id 与 embedding，category/content 为空串。CREATE 与 INSERT 的返回值都正常，问题在落盘格式而不是执行层。"
+    },
+    {
+      "id": "c10",
+      "ref": "m00385",
+      "role": "agent",
+      "content": "根因：WAL 里字符串写的是表内字典码（uint32），字典只在进程内有效，重启后新表字典为空，码全部落空。改为按内容落盘，重放时 dict_intern 重建字典。这也是为什么差分测试要跨进程、而不只是同进程回读。"
+    },
+    {
+      "id": "c11",
+      "ref": "m00395",
+      "role": "tool",
+      "content": "UPDATE ... WHERE id = 1 返回 'ERROR 0 (42000):'，同时 DELETE 正常。错误码 0 说明返回了失败但没有填错误，是判定分支写错而不是执行失败。"
+    },
+    {
+      "id": "c12",
+      "ref": "m00400",
+      "role": "agent",
+      "content": "根因：where_match 把'不匹配'与'表达式求值出错'混在同一个 bool 上，于是没匹配的行被判成错误。改为单次 eval_expr，用返回值区分'命中/未命中'，错误只走 err。"
+    },
+    {
+      "id": "c13",
+      "ref": "m00410",
+      "role": "tool",
+      "content": "crash_test.py 跑到第一次读结果就挂住：驱动读不到任何一行，进程不休。查下来是结果输出没有终止符，驱动只能一直等。"
+    },
+    {
+      "id": "c14",
+      "ref": "m00412",
+      "role": "agent",
+      "content": "补救：每条语句的输出后追加可配置终止符（默认空行），并让驱动'读到空行'为止。这类'看起来只是脚本问题'的挂起，实际是协议契约缺失——题包没给，就只能自己先定义一个自洽且可替换的契约。"
+    },
+    {
+      "id": "c15",
+      "ref": "m00418",
+      "role": "tool",
+      "content": "bench.py 第一次跑出 'ERROR 1064: unexpected token [\\''：脚本生成的是不带引号的 [0.1,...]，而题面要求向量字面量是带引号字符串。顺带暴露了解析器只认带引号的形式。"
+    },
+    {
+      "id": "c16",
+      "ref": "m00419",
+      "role": "agent",
+      "content": "两边都改：脚本按题面加引号；解析器同时容错裸 [1,2,3]（vec_lit 同时接受 STR 与方括号序列）。测试脚本的写法错误不该被当成'实现能跑'的证据，但能顺手换来一点健壮性。"
+    },
+    {
+      "id": "c17",
+      "ref": "m00562",
+      "role": "student",
+      "content": "学生注意到官方题包已经发布，主动提示中止『驱动未公开』的假设，要求按新事实重新核对题包内容。"
+    },
+    {
+      "id": "c18",
+      "ref": "m00570",
+      "role": "agent",
+      "content": "确认 2026-competition-round2 分支新增了 mysqltest/（manifest.json + 20 组 .test/.result）。逐份读完 20 个用例后总结口径：断言按 SQL 顺序对应、--restart 要复用同一数据目录且关闭时回滚未提交事务、--mode ann 只影响其后的向量查询、错误用语义名（duplicate_key / dimension_mismatch / unsupported_sql）而不是固定文案。"
+    },
+    {
+      "id": "c19",
+      "ref": "m00603",
+      "role": "tool",
+      "content": "复刻断言模型后第一次全量跑公开题包：20/20 cases passed，95 条 SQL 全绿。"
+    },
+    {
+      "id": "c20",
+      "ref": "m00612",
+      "role": "agent",
+      "content": "两处偏差修正：错误行从『ERROR 1062 (23000): ...』改为『ERROR 1062 (23000) [duplicate_key]: ...』，让驱动既能按数字码、也能按语义名匹配；BEGIN 在一个已打开的事务里再次执行时改为隐式提交前一个事务（MySQL 语义），此前是静默保持。改完 20/20 与 60+ 断言仍然全绿。"
+    },
+    {
+      "id": "c21",
+      "ref": "m00620",
+      "role": "tool",
+      "content": "小阈值 checkpoint 崩溃测试通过：MVDB_CKPT_BYTES=65536 下 40 批×100 行提交中被 SIGKILL，重启后 2600 行恰好是 100 的整数倍且 id 连续，说明 base.dat 的 tmp→fsync→rename→截断 WAL 顺序没有产生半截快照。"
+    }
+  ],
+  "experiments": [
+    {
+      "id": "e1",
+      "name": "题面示例端到端",
+      "command": "python3 tests/sql_suite.py",
+      "output": "0 failed / total checks",
+      "what": "40+ 条断言覆盖 DDL/DML、WHERE/ORDER BY、事务回滚、重启恢复、Unicode 码点长度与排序、错误码 1050/1054/1062/1064/1136/1146/1406/1366、并列按主键升序、过滤后 TopK 不足 K 返回全部。",
+      "status": "verified"
+    },
+    {
+      "id": "e2",
+      "name": "崩溃恢复（提交中被 SIGKILL）",
+      "command": "python3 tests/crash_test.py",
+      "output": "committed batches=44 expect=4400 got=4400 contiguous=True | after torn-tail got=4400 same=True",
+      "what": "44 批 × 100 行自动提交过程中 SIGKILL；重启后 4400 行连续无缺，随后往 WAL 尾部追加 32 字节垃圾再重启，仍恢复到同一状态（撕裂记录被截断）。",
+      "status": "verified"
+    },
+    {
+      "id": "e3",
+      "name": "TopK 与暴力解差分",
+      "command": "python3 tests/topk_check.py",
+      "output": "checked 12 queries, mismatch=0",
+      "what": "输入先按 float32 量化，再用 float64 暴力解排序（并列按主键升序），与引擎输出的 id 序列逐项比对；12 条查询含带过滤与不带过滤。",
+      "status": "verified"
+    },
+    {
+      "id": "e4",
+      "name": "性能基线",
+      "command": "python3 tests/bench.py",
+      "output": "insert  1.015 s  (9851.7 rows/s) / query   0.028 s  (0.028 ms/query) / peakRSS 17.3 MiB   wal 5.31 MiB",
+      "what": "10,000 行 / 128 维 / 每批 100 行提交 / 1,000 次 TopK（K=10，一半带等值过滤）。插入侧主要成本是每批一次 fdatasync；查询侧 10k×128 的单次全扫在 28 微秒量级。",
+      "status": "verified"
+    },
+    {
+      "id": "e5",
+      "name": "WAL 字符串编码缺陷（重启后 VARCHAR 全空）",
+      "command": "printf 'SELECT * FROM docs;\\n' | ./minivectordb --data-dir .tmpdb",
+      "output": "重启前：1 database 事务与恢复 [1,0,0,0]；重启后：1 <空> <空> [1,0,0,0]",
+      "what": "缺陷是'按字典码落盘'，同进程内看不出问题，只有跨进程重启才暴露；修复后同一命令恢复出完整三列。",
+      "status": "verified"
+    },
+    {
+      "id": "e6",
+      "name": "投影下标越界导致 SIGSEGV",
+      "command": "./minivectordb --data-dir /tmp/mvdb1 < tests/smoke1.sql",
+      "output": "READY / Query OK, 0 rows affected / Query OK, 3 rows affected / exit=139（Segmentation fault）",
+      "what": "CREATE、INSERT 都成功，第一条带 L2_DISTANCE 的 SELECT 崩溃；修 qvec 与 pcol 等长后同一脚本 0 退出。",
+      "status": "verified"
+    },
+    {
+      "id": "e7",
+      "name": "官方公开题包（20 例 95 条 SQL）",
+      "command": "python3 tests/run_public.py",
+      "output": "20/20 cases passed",
+      "what": "按 mysqltest/README.md 的断言模型复刻本地驱动（columns/rows/affected_rows/error、1e-5 浮点容差、unordered 多重集、--restart/--mode ann），逐例从空数据目录开始。",
+      "status": "verified"
+    },
+    {
+      "id": "e8",
+      "name": "checkpoint 途中的崩溃恢复",
+      "command": "MVDB_CKPT_BYTES=65536 python3 tests/ckpt_crash_test.py",
+      "output": "OK count=2600 (multiple of 100, contiguous), survived kill at batch 25, checkpoint=64KB",
+      "what": "把 checkpoint 阈值压到 64KB，让 base.dat 重写在提交路径上频繁发生；在提交批中途 SIGKILL，重启后行数仍是 100 的整数倍且 id 连续。",
+      "status": "verified"
+    }
+  ],
+  "units": [
+    {
+      "id": "unit-1",
+      "dimension": "问题理解与自主拆解",
+      "tier": 1.0,
+      "problem": "在题包、测试驱动、协议全未公开的情况下，如何安排答题顺序才不会把时间浪费在错误的方向上。",
+      "why_this_tier": "学生主动把'先搜全资料、再定方案'设为前置条件（不是罗列功能），并据此推迟编码；调研结论（无公开题包、官方分支只有 37 个 blob、Dockerfile 与 conversation.json 为 0 字节）直接改写了实施方案，属于有实际结果支撑的参与验证。",
+      "student_evidence": {
+        "pointer": "/user_prompts/0/content",
+        "quote": "记住先不开始做，先全网搜索相关资料，确定一个万全的答题思路和方法规划。"
+      },
+      "result_evidence": {
+        "pointer": "/conversations/1/content",
+        "quote": "全网检索（官网、语雀、GitHub、Discourse）未找到该题的公开题包或测试驱动；官方分支 2026-competition-round2 上只有 37 个 blob，Dockerfile 与 conversation.json 均为 0 字节，题库/驱动/协议都要等组织方另发。"
+      }
+    },
+    {
+      "id": "unit-2",
+      "dimension": "独立验证与质疑",
+      "tier": 1.0,
+      "problem": "驱动未知时，把'协议'当成实现细节直接赌一种输入格式，还是先把它当成一等风险隔离出来。",
+      "why_this_tier": "学生要求方案必须给出不依赖具体协议也能提测的路径，Agent 据此把六件协议要素收敛到单文件并预置三套输出；后续 crash_test 因缺终止符挂起，实际验证了'缺契约会直接卡死'这一判断，学生据此接受把终止符做成可配置项。",
+      "student_evidence": {
+        "pointer": "/conversations/2/content",
+        "quote": "学生把'驱动未知'当作首要风险，要求方案必须给出不依赖具体协议也能提测的对冲路径，而不是赌某一种输入格式。"
+      },
+      "result_evidence": {
+        "pointer": "/conversations/12/content",
+        "quote": "crash_test.py 跑到第一次读结果就挂住：驱动读不到任何一行，进程不休。查下来是结果输出没有终止符，驱动只能一直等。"
+      }
+    },
+    {
+      "id": "unit-3",
+      "dimension": "实验与反馈迭代",
+      "tier": 1.5,
+      "problem": "向量检索的正确性如何被独立验证，而不是靠'跑通示例'自我确认。",
+      "why_this_tier": "学生要求把示例、崩溃、差分、性能四类验证都落成可重跑脚本；TopK 差分按 float32 量化后与 float64 暴力解比对，发现并修正了并列排序与过滤集合两处语义，随后复测 mismatch=0，形成完整闭环。",
+      "student_evidence": {
+        "pointer": "/user_prompts/0/content",
+        "quote": "MySQL 正式用例全部通过才进入计分。性能与 Agent Prompt 分别排名，各最高 40 分"
+      },
+      "result_evidence": {
+        "pointer": "/experiments/2/output",
+        "quote": "checked 12 queries, mismatch=0"
+      }
+    },
+    {
+      "id": "unit-4",
+      "dimension": "独立验证与质疑",
+      "tier": 1.0,
+      "problem": "题包发布后，怎么确认自己的实现与官方口径一致，而不是只跑通自己写的冒烟脚本。",
+      "why_this_tier": "学生发现官方题包已发布并提示重新核对，中止了『驱动未公开、只能靠对冲』的旧假设；Agent 据此复刻题包断言模型逐例执行，暴露并修正错误语义名与 BEGIN 语义两处偏差，修完复测仍 20/20。",
+      "student_evidence": {
+        "pointer": "/user_prompts/2/content",
+        "quote": "题包应该已经有了"
+      },
+      "result_evidence": {
+        "pointer": "/experiments/6/output",
+        "quote": "20/20 cases passed"
+      }
+    }
+  ],
+  "retrospective": [
+    {
+      "id": "r1",
+      "text": "协议未知时，正确的做法不是猜，而是把未知面收敛到一个可替换的边界（proto.cpp + 环境变量），让别人改配置而不是改代码。"
+    },
+    {
+      "id": "r2",
+      "text": "字典码、指针、迭代器这类'进程内句柄'不能跨重启复用；凡是落盘的内容必须是自解释的（字符串写内容，不是写码）。这个缺陷只在跨进程回读时暴露，同进程内永远测不出来。"
+    },
+    {
+      "id": "r3",
+      "text": "把'不匹配'和'出错'塞进同一个 bool 是这类手写执行器最常见的坑；判定与错误要分开返回。"
+    },
+    {
+      "id": "r4",
+      "text": "测试脚本自己写错（向量字面量没加引号）会伪装成实现缺陷；先怀疑输入，再怀疑实现，能省掉一次误修。"
+    },
+    {
+      "id": "r5",
+      "text": "性能上，插入侧被每批一次 fdatasync 主导，查询侧被内存带宽主导；优化方向完全不同，不能用一个笼统的'更快'目标去推。"
+    }
+  ],
+  "limitations": [
+    {
+      "id": "l1",
+      "text": "公开题包已发布并 20/20 通过；但正式评测的 29 个用例中有 9 个保留用例（数据规模、操作序列、ANN 参数）不公开，进程通信格式仍「以组织方配套驱动为准」，本地用自定义的 MYSQL 文本协议对跑。"
+    },
+    {
+      "id": "l2",
+      "text": "本机没有 docker/podman、没有 root，Dockerfile 未做本地构建验证，只保证两阶段从源码构建的写法与官方示例一致。"
+    },
+    {
+      "id": "l3",
+      "text": "公开题包只用 1e-5 容差比较浮点，未规定文本位数；实现输出最短可回读十进制，可用 MVDB_FLOAT_FMT 切换。"
+    },
+    {
+      "id": "l4",
+      "text": "ann 模式当前与 exact 结果一致（未实现近似剪枝）：召回率满足要求，但大数据量下查询耗时没有下降。"
+    },
+    {
+      "id": "l5",
+      "text": "单线程实现；未实现聚合函数、JOIN、二级索引；超过内存的规模需要额外的磁盘索引。"
+    },
+    {
+      "id": "l6",
+      "text": "学生侧独立验证目前集中在「要求验证什么」与「读结果做判断」两层，尚未由学生本人独立重跑全部脚本并给出书面复盘；docs/学生验证清单.md 列出了待补的回答。"
+    }
+  ]
+}
