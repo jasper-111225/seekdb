@@ -167,6 +167,18 @@
       "ref": "m00620",
       "role": "tool",
       "content": "小阈值 checkpoint 崩溃测试通过：MVDB_CKPT_BYTES=65536 下 40 批×100 行提交中被 SIGKILL，重启后 2600 行恰好是 100 的整数倍且 id 连续，说明 base.dat 的 tmp→fsync→rename→截断 WAL 顺序没有产生半截快照。"
+    },
+    {
+      "id": "c22",
+      "ref": "m00680",
+      "role": "agent",
+      "content": "自查提交内容时发现：上游 seekdb 的 .gitignore 第 54 行有一条裸 `Makefile` 规则，所以 Makefile 从未被 git 跟踪，而 Dockerfile 里写着 COPY Makefile —— 预检构建必然失败；同时旧分支树里混进了 .ckptdb/.publicdb/.q2/.q3/.qdb 等测试数据目录。处理：在新 tip 9f6df2b 上重建干净分支，只收源码/测试/文档/Agent 材料，Makefile 用 git add -f 并补 !Makefile 例外，随后用 git archive 导出干净树重新构建验证。"
+    },
+    {
+      "id": "c23",
+      "ref": "m00685",
+      "role": "tool",
+      "content": "git archive HEAD 导出到空目录后 make -j4 成功产出 minivectordb（256KB），tests/run_public.py 仍 20/20 —— 证明构建不依赖任何未跟踪文件。"
     }
   ],
   "experiments": [
@@ -232,6 +244,14 @@
       "command": "MVDB_CKPT_BYTES=65536 python3 tests/ckpt_crash_test.py",
       "output": "OK count=2600 (multiple of 100, contiguous), survived kill at batch 25, checkpoint=64KB",
       "what": "把 checkpoint 阈值压到 64KB，让 base.dat 重写在提交路径上频繁发生；在提交批中途 SIGKILL，重启后行数仍是 100 的整数倍且 id 连续。",
+      "status": "verified"
+    },
+    {
+      "id": "e9",
+      "name": "干净树构建验证",
+      "command": "git archive HEAD | tar -x -C .clean && cd .clean && make -j4 && python3 tests/run_public.py",
+      "output": "minivectordb 256152 bytes / 20/20 cases passed",
+      "what": "确认 Makefile、src、mysqltest 都在提交里，镜像构建阶段 COPY Makefile 与 COPY src 不会落空。",
       "status": "verified"
     }
   ],
@@ -326,7 +346,7 @@
     },
     {
       "id": "l2",
-      "text": "本机没有 docker/podman、没有 root，Dockerfile 未做本地构建验证，只保证两阶段从源码构建的写法与官方示例一致。"
+      "text": "本机没有 docker/podman、没有 root，无法真正 docker build；已用 `git archive HEAD` 导出干净树验证 make 与 20/20（证明镜像两步 COPY 的输入都在提交里），Dockerfile 写法与官方示例一致（ubuntu:24.04 多阶段、/data、不 EXPOSE）。"
     },
     {
       "id": "l3",
