@@ -9,3 +9,6 @@ tests
 agent
 *.o
 minivectordb
+.git
+.pkg
+.clean
